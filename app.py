@@ -163,7 +163,7 @@ def display_settings_page(config):
         qdrant_key = st.text_input("Qdrant API Key", value="••••••", type="password")
         collection_name = st.text_input("Collection Name", value=config.collection_name)
     
-    llm_model = st.selectbox("LLM Model", options=["gpt-4o", "gpt-4", "gpt-3.5-turbo"], index=0)
+    llm_model = st.selectbox("LLM Model", options=["gpt-4o"], index=0)
     
     if st.button("Save Settings", type="primary"):
         app_logger.info("Saving settings")

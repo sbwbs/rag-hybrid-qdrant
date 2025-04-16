@@ -44,7 +44,7 @@ The application consists of three main components:
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone git@github.com:sbwbs/rag-hybrid-qdrant.git
 cd hybrid-search-rfp-assistant
 ```
 
@@ -58,7 +58,7 @@ pip install -r requirements.txt
 OPENAI_API_KEY=your_openai_api_key
 QDRANT_API_KEY=your_qdrant_api_key
 QDRANT_URL=your_qdrant_url
-COLLECTION_NAME=hybrid_rfp_rag
+COLLECTION_NAME=name_of_your_collection
 LLM_MODEL=gpt-4o
 ```
 
