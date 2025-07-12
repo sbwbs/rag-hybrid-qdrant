@@ -46,101 +46,259 @@ def get_bulk_processor() -> Optional[BulkProcessor]:
         return None
 
 def display_bulk_processing_page():
-    """Display the bulk processing page"""
-    st.title("Bulk Question Processing")
+    """Display the bulk question processing page"""
+    st.title("🔍 Bulk Question Processing")
+    st.markdown("---")
+    
+    # Information section
+    with st.expander("ℹ️ What is Bulk Question Processing?", expanded=False):
+        st.markdown("""
+        **Purpose:** Get answers to multiple questions from your existing knowledge base
+        
+        **How it works:**
+        1. Upload a file with questions
+        2. The system searches your indexed documents
+        3. AI generates answers with confidence scores
+        4. Download results with answers and source documents
+        
+        **Note:** This searches existing documents. To add new documents to your knowledge base, use:
+        - "CSV Document Upload" for Q&A pairs
+        - "JSON Document Upload" for structured documents
+        """)
+    
+    # Format requirements
+    with st.expander("📋 File Format Requirements", expanded=False):
+        st.markdown("""
+        **Required:**
+        - CSV or Excel file (.csv or .xlsx)
+        - Must contain a `question` column
+        - Maximum 1,000 questions per file
+        
+        **Example CSV Structure:**
+        ```csv
+        question
+        "What is our data security policy?"
+        "How do we handle customer complaints?"
+        "What are our payment terms?"
+        ```
+        
+        **Notes:**
+        - Only the `question` column is used
+        - Other columns will be ignored
+        - Questions will be processed in parallel for speed
+        """)
+    
+    # Create sample template
+    st.subheader("📥 Download Question Template")
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        if st.button("📥 Download Template", type="secondary"):
+            template_data = {
+                'question': [
+                    'What is our company data security approach?',
+                    'How do we handle customer support requests?',
+                    'What are our standard payment terms?',
+                    'What is our refund policy?',
+                    'How do we ensure project quality?'
+                ]
+            }
+            template_df = pd.DataFrame(template_data)
+            template_csv = template_df.to_csv(index=False)
+            
+            st.download_button(
+                label="⬇️ Download Questions Template",
+                data=template_csv,
+                file_name="questions_template.csv",
+                mime="text/csv",
+                help="Download a sample CSV file with the correct format"
+            )
+    
+    with col2:
+        st.info("💡 Download the template to see the required format for bulk questions")
+    
+    st.markdown("---")
     
     # File upload
+    st.subheader("📂 Upload Questions File")
     uploaded_file = st.file_uploader(
-        "Upload Questions (CSV or Excel)",
+        "Choose CSV or Excel file with questions",
         type=['csv', 'xlsx'],
-        help="Upload a CSV or Excel file containing questions to process"
+        key="bulk_questions_uploader",
+        help="Upload a CSV or Excel file containing questions to get answers from your knowledge base"
     )
     
     if uploaded_file:
-        # Process file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=Path(uploaded_file.name).suffix) as tmp_file:
-            tmp_file.write(uploaded_file.getvalue())
-            tmp_file_path = tmp_file.name
-        
         try:
-            # Validate file
-            validation_result = st.session_state.bulk_processor.validate_input_file(tmp_file_path)
+            # File preview and validation
+            st.subheader("📋 File Preview & Validation")
             
-            if not validation_result['is_valid']:
-                st.error(f"Invalid file: {validation_result['error']}")
+            # Read file for preview
+            if Path(uploaded_file.name).suffix.lower() == '.csv':
+                file_contents = uploaded_file.getvalue()
+                df = pd.read_csv(io.StringIO(file_contents.decode('utf-8')))
+            else:
+                df = pd.read_excel(uploaded_file)
+            
+            # Display file metrics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Questions", len(df))
+            with col2:
+                st.metric("Columns", len(df.columns))
+            with col3:
+                # Validate required column
+                has_question_col = 'question' in df.columns
+                validation_status = "✅ Valid" if has_question_col else "❌ Invalid"
+                st.metric("Format", validation_status)
+            
+            # Show column validation
+            if not has_question_col:
+                st.error("❌ Missing required 'question' column")
+                st.info(f"Found columns: {list(df.columns)}")
+                st.info("Please ensure your file has a 'question' column containing the questions to process")
                 return
             
-            # Display file preview
-            st.subheader("File Preview")
-            if Path(uploaded_file.name).suffix.lower() == '.csv':
-                df = pd.read_csv(tmp_file_path)
-            else:
-                df = pd.read_excel(tmp_file_path)
-            st.dataframe(df.head())
+            # Check question count limit
+            if len(df) > 1000:
+                st.error(f"❌ Too many questions: {len(df)}. Maximum allowed: 1,000")
+                st.info("Please reduce the number of questions in your file")
+                return
             
-            # Processing options
-            st.subheader("Processing Options")
-            col1, col2 = st.columns(2)
-            with col1:
-                max_workers = st.slider(
-                    "Number of Parallel Workers",
-                    min_value=1,
-                    max_value=10,
-                    value=4,
-                    help="Number of questions to process simultaneously"
-                )
-            with col2:
-                output_format = st.selectbox(
-                    "Output Format",
-                    options=['CSV', 'Excel'],
-                    help="Format for the results file"
-                )
+            # Check for empty questions
+            valid_questions = df['question'].dropna().astype(str).str.strip()
+            valid_questions = valid_questions[valid_questions != '']
+            empty_count = len(df) - len(valid_questions)
             
-            if st.button("Process Questions", type="primary"):
-                with st.spinner("Processing questions..."):
-                    try:
-                        # Process questions
-                        results = st.session_state.bulk_processor.process_questions(
-                            validation_result['questions'],
-                            max_workers=max_workers
-                        )
-                        
-                        # Display results summary
-                        st.subheader("Processing Results")
-                        success_count = len([r for r in results if r['status'] == 'success'])
-                        error_count = len([r for r in results if r['status'] == 'error'])
-                        
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.metric("Successfully Processed", success_count)
-                        with col2:
-                            st.metric("Failed to Process", error_count)
-                        
-                        # Export and download results
-                        st.subheader("Download Results")
-                        export_result = st.session_state.bulk_processor.export_results(
-                            results,
-                            format=output_format.lower()
-                        )
-                        
-                        # Auto-download the file
-                        st.download_button(
-                            label=f"Download {output_format} File",
-                            data=export_result['file_data'],
-                            file_name=export_result['file_name'],
-                            mime=export_result['mime_type']
-                        )
-                        
-                    except Exception as e:
-                        st.error(f"Error processing questions: {str(e)}")
-                        app_logger.error(f"Error in bulk processing: {str(e)}", exc_info=True)
-        
-        finally:
-            # Clean up temporary file
+            if empty_count > 0:
+                st.warning(f"⚠️ Found {empty_count} empty question(s) that will be skipped")
+            
+            if len(valid_questions) == 0:
+                st.error("❌ No valid questions found in the file")
+                st.info("Please ensure your questions are not empty")
+                return
+            
+            st.success(f"✅ File validation passed! {len(valid_questions)} valid questions found")
+            
+            # Show preview of questions
+            st.dataframe(df.head(10), use_container_width=True)
+            if len(df) > 10:
+                st.info(f"Showing first 10 of {len(df)} questions")
+            
+            # Process file with bulk processor for final validation
+            with tempfile.NamedTemporaryFile(delete=False, suffix=Path(uploaded_file.name).suffix) as tmp_file:
+                tmp_file.write(uploaded_file.getvalue())
+                tmp_file_path = tmp_file.name
+            
             try:
-                Path(tmp_file_path).unlink()
-            except Exception as e:
-                app_logger.warning(f"Failed to delete temporary file: {str(e)}")
+                # Final validation using bulk processor
+                validation_result = st.session_state.bulk_processor.validate_input_file(tmp_file_path)
+                
+                if not validation_result['is_valid']:
+                    st.error(f"❌ Validation failed: {validation_result['error']}")
+                    return
+                
+                st.markdown("---")
+                
+                # Processing options
+                st.subheader("⚙️ Processing Options")
+                col1, col2 = st.columns(2)
+                with col1:
+                    max_workers = st.slider(
+                        "Parallel Workers",
+                        min_value=1,
+                        max_value=10,
+                        value=4,
+                        help="Number of questions to process simultaneously. More workers = faster processing but higher resource usage."
+                    )
+                with col2:
+                    output_format = st.selectbox(
+                        "Output Format",
+                        options=['CSV', 'Excel'],
+                        help="Format for the results file download"
+                    )
+                
+                # Estimation
+                estimated_time = len(valid_questions) / max_workers * 3  # Rough estimate: 3 seconds per question
+                st.info(f"📊 Estimated processing time: ~{estimated_time:.1f} seconds for {len(valid_questions)} questions")
+                
+                if st.button("🚀 Process Questions", type="primary"):
+                    with st.spinner(f"Processing {len(valid_questions)} questions..."):
+                        try:
+                            # Process questions
+                            progress_bar = st.progress(0)
+                            status_text = st.empty()
+                            
+                            status_text.text("Starting question processing...")
+                            results = st.session_state.bulk_processor.process_questions(
+                                validation_result['questions'],
+                                max_workers=max_workers
+                            )
+                            progress_bar.progress(100)
+                            status_text.text("Processing complete!")
+                            
+                            # Display results summary
+                            st.subheader("📊 Processing Results")
+                            success_count = len([r for r in results if r['status'] == 'success'])
+                            error_count = len([r for r in results if r['status'] == 'error'])
+                            
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("✅ Successful", success_count)
+                            with col2:
+                                st.metric("❌ Failed", error_count)
+                            with col3:
+                                success_rate = (success_count / len(results) * 100) if results else 0
+                                st.metric("Success Rate", f"{success_rate:.1f}%")
+                            
+                            # Show sample results if any succeeded
+                            if success_count > 0:
+                                st.subheader("📝 Sample Results")
+                                successful_results = [r for r in results if r['status'] == 'success']
+                                sample_result = successful_results[0]
+                                
+                                with st.expander("View Sample Question & Answer", expanded=False):
+                                    st.markdown(f"**Question:** {sample_result['question']}")
+                                    st.markdown(f"**Answer:** {sample_result['answer']}")
+                                    st.markdown(f"**Confidence:** {sample_result['confidence']:.2f}")
+                                    if 'source_documents' in sample_result and sample_result['source_documents']:
+                                        st.markdown(f"**Sources:** {len(sample_result['source_documents'])} document(s)")
+                            
+                            # Export and download results
+                            st.subheader("📥 Download Results")
+                            export_result = st.session_state.bulk_processor.export_results(
+                                results,
+                                format=output_format.lower()
+                            )
+                            
+                            col1, col2 = st.columns([1, 2])
+                            with col1:
+                                st.download_button(
+                                    label=f"📁 Download {output_format} Results",
+                                    data=export_result['file_data'],
+                                    file_name=export_result['file_name'],
+                                    mime=export_result['mime_type'],
+                                    type="primary"
+                                )
+                            with col2:
+                                st.info(f"💡 Results include questions, answers, confidence scores, and source documents")
+                            
+                        except Exception as e:
+                            st.error(f"❌ Error processing questions: {str(e)}")
+                            app_logger.error(f"Error in bulk processing: {str(e)}", exc_info=True)
+            
+            finally:
+                # Clean up temporary file
+                try:
+                    if 'tmp_file_path' in locals():
+                        Path(tmp_file_path).unlink()
+                except Exception as e:
+                    app_logger.warning(f"Failed to delete temporary file: {str(e)}")
+                    
+        except Exception as e:
+            st.error(f"❌ Error reading file: {str(e)}")
+            st.info("Please ensure the file is a valid CSV or Excel format")
+            app_logger.error(f"Error in bulk processing page: {str(e)}", exc_info=True)
 
 def initialize_components():
     """Initialize all required components"""
