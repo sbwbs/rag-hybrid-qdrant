@@ -5,12 +5,15 @@ A Streamlit-based application that provides a hybrid search interface for RFP (R
 ## Features
 
 - **Hybrid Search**: Combines dense and sparse embeddings for improved search accuracy
-- **Document Management**: Upload, validate, and index RFP documents
+- **Multiple Document Formats**: Support for both JSON and CSV document uploads
+- **CSV Document Upload**: Direct CSV upload for Q&A pairs - no manual conversion needed
+- **Bulk Question Processing**: Process multiple questions at once and get batch answers
 - **Intelligent Answering**: Uses GPT models to generate context-aware answers
 - **Confidence Scoring**: Provides confidence scores with detailed breakdowns
 - **Real-time Search**: Instant results with relevance scores
+- **Template Downloads**: Get properly formatted templates for easy uploads
 - **Comprehensive Logging**: Detailed logging for debugging and monitoring
-- **User-friendly Interface**: Clean and intuitive Streamlit UI
+- **User-friendly Interface**: Clean and intuitive Streamlit UI with clear guidance
 
 ## Architecture
 
@@ -73,12 +76,17 @@ streamlit run app.py
 
 3. Navigate through the different sections:
    - **Search**: Enter questions and get answers from indexed documents
-   - **Document Management**: Upload and index new documents
+   - **Document Upload**: Upload JSON files with structured Q&A documents
+   - **CSV Document Upload**: Upload CSV files with question/answer pairs
+   - **Bulk Processing**: Process multiple questions at once to get batch answers
    - **Settings**: Configure API keys and other settings
 
-## Document Format
+## Document Formats
 
-Documents should be uploaded in JSON format with the following structure:
+The application supports two document upload formats:
+
+### JSON Format
+Upload structured documents in JSON format:
 ```json
 {
   "documents": [
@@ -92,6 +100,37 @@ Documents should be uploaded in JSON format with the following structure:
   ]
 }
 ```
+
+### CSV Format
+Upload Q&A pairs directly in CSV format:
+```csv
+question,answer,summary,answer_type,date
+"What is our data security approach?","We implement multi-layered security...","Security overview","security","2024-01-01"
+"How do we handle customer privacy?","We follow GDPR compliance standards...","Privacy policy","privacy","2024-01-01"
+```
+
+**Required columns:** `question`, `answer`  
+**Optional columns:** `summary`, `answer_type`, `date`
+
+## Bulk Question Processing
+
+Process multiple questions at once using CSV or Excel files:
+
+**Input Format:**
+```csv
+question
+"What is our refund policy?"
+"How do we handle customer complaints?"
+"What are our payment terms?"
+```
+
+**Output:** Downloadable file with questions, AI-generated answers, confidence scores, and source documents.
+
+**Features:**
+- Upload CSV/Excel with up to 1,000 questions
+- Parallel processing for faster results
+- Template download for correct format
+- Comprehensive results with confidence metrics
 
 ## Logging
 
