@@ -225,49 +225,123 @@ def display_search_page():
                 st.error("An error occurred during the search. Please try again.")
 
 def display_document_upload_page():
-    """Display the document upload page"""
-    st.title("Document Upload")
+    """Display the JSON document upload page"""
+    st.title("📄 JSON Document Upload")
+    st.markdown("---")
     
-    uploaded_files = st.file_uploader(
-        "Upload RFP Documents",
-        type=['pdf', 'docx', 'txt'],
-        accept_multiple_files=True
+    # Information section
+    with st.expander("ℹ️ JSON Format Information", expanded=False):
+        st.markdown("""
+        **Required JSON Structure:**
+        ```json
+        {
+          "documents": [
+            {
+              "question": "What is our data security approach?",
+              "answer": "We implement multi-layered security...",
+              "summary": "Security overview",
+              "answer_type": "security", 
+              "date": "2024-01-01"
+            }
+          ]
+        }
+        ```
+        
+        **Required Fields:** `question`, `answer`  
+        **Optional Fields:** `summary`, `answer_type`, `date`
+        """)
+    
+    # File upload section
+    st.subheader("📂 Upload JSON File")
+    uploaded_file = st.file_uploader(
+        "Choose JSON file to upload",
+        type=['json'],
+        help="Upload a JSON file with the required document structure for indexing"
     )
     
-    if uploaded_files:
-        if st.button("Process Documents"):
-            with st.spinner("Processing documents..."):
-                try:
-                    # Create temporary directory for uploaded files
-                    with tempfile.TemporaryDirectory() as temp_dir:
-                        temp_path = Path(temp_dir)
-                        
-                        # Save uploaded files to temporary directory
-                        for file in uploaded_files:
-                            file_path = temp_path / file.name
-                            with open(file_path, 'wb') as f:
-                                f.write(file.getbuffer())
-                        
-                        # Process documents
-                        success_count = 0
-                        error_count = 0
-                        
-                        for file_path in temp_path.glob('*'):
-                            try:
-                                st.session_state.document_processor.process_document(str(file_path))
-                                success_count += 1
-                            except Exception as e:
-                                app_logger.error(f"Error processing {file_path.name}: {str(e)}")
-                                error_count += 1
-                        
-                        if success_count > 0:
-                            st.success(f"Successfully processed {success_count} document(s)")
-                        if error_count > 0:
-                            st.error(f"Failed to process {error_count} document(s)")
+    if uploaded_file is not None:
+        try:
+            # File preview
+            st.subheader("👀 File Preview")
+            
+            # Read and parse JSON
+            file_contents = uploaded_file.getvalue()
+            json_data = json.loads(file_contents.decode('utf-8'))
+            
+            # Validate structure
+            if "documents" not in json_data:
+                st.error("❌ Invalid JSON structure: Missing 'documents' array")
+                st.info("Expected structure: {\"documents\": [...]}")
+            else:
+                documents = json_data["documents"]
+                
+                # Display basic info
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Total Documents", len(documents))
+                with col2:
+                    st.metric("Format", "✅ Valid JSON")
+                
+                # Show preview of first few documents
+                if documents:
+                    st.json(documents[0] if len(documents) == 1 else documents[:3])
+                    if len(documents) > 3:
+                        st.info(f"Showing first 3 of {len(documents)} documents")
+                
+                # Index button
+                if st.button("🚀 Index JSON Documents", type="primary"):
+                    with st.spinner("Processing and indexing JSON documents..."):
+                        try:
+                            # Save uploaded file to temporary location
+                            with tempfile.NamedTemporaryFile(delete=False, suffix='.json', mode='w') as tmp_file:
+                                json.dump(json_data, tmp_file)
+                                tmp_file_path = tmp_file.name
                             
-                except Exception as e:
-                    app_logger.error(f"Error in document processing: {str(e)}")
-                    st.error(f"Error processing documents: {str(e)}")
+                            # Process JSON file using existing method
+                            app_logger.info(f"Starting JSON document processing from uploaded file")
+                            processed_docs = st.session_state.document_processor.process_json_file(tmp_file_path)
+                            
+                            if processed_docs:
+                                # Index the documents
+                                indexed_count = st.session_state.search_engine.bulk_index_documents(processed_docs)
+                                
+                                st.success(f"🎉 Successfully indexed {indexed_count} documents!")
+                                
+                                # Results summary
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    st.metric("Documents Indexed", indexed_count)
+                                with col2:
+                                    st.metric("Total Processed", len(processed_docs))
+                                
+                                app_logger.info(f"Successfully indexed {indexed_count} documents from JSON")
+                            else:
+                                st.error("❌ No valid documents found in JSON file")
+                                st.info("Please check that documents have required 'question' and 'answer' fields")
+                            
+                            # Clean up temporary file
+                            try:
+                                Path(tmp_file_path).unlink()
+                            except Exception as cleanup_error:
+                                app_logger.warning(f"Failed to delete temporary file: {cleanup_error}")
+                                
+                        except Exception as e:
+                            app_logger.error(f"Error processing JSON upload: {str(e)}", exc_info=True)
+                            st.error(f"Error processing file: {str(e)}")
+                            
+                            # Clean up on error
+                            try:
+                                if 'tmp_file_path' in locals():
+                                    Path(tmp_file_path).unlink()
+                            except:
+                                pass
+                            
+        except json.JSONDecodeError as e:
+            st.error(f"❌ Invalid JSON format: {str(e)}")
+            st.info("Please ensure the file is valid JSON with proper syntax")
+        except Exception as e:
+            app_logger.error(f"Error reading JSON file: {str(e)}")
+            st.error(f"Error reading file: {str(e)}")
 
 def display_settings_page():
     """Display the settings page"""
