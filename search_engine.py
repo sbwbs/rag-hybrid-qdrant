@@ -321,3 +321,68 @@ class HybridSearchEngine:
         except Exception as e:
             logger.error(f"Error in search and answer pipeline: {str(e)}")
             raise 
+    
+    def index_documents_from_csv(self, csv_file_path: str) -> Dict[str, Any]:
+        """NEW METHOD: Index documents directly from CSV file - ADDITIVE METHOD, NO IMPACT ON EXISTING CODE"""
+        logger.info(f"Starting CSV document indexing from: {csv_file_path}")
+        
+        try:
+            # Import here to avoid circular imports
+            from document_processor import DocumentProcessor
+            
+            # Use existing document processor with new CSV method
+            processor = DocumentProcessor()
+            
+            # Process CSV file using new method - produces same format as JSON processing
+            logger.debug("Processing CSV file using document processor")
+            documents = processor.process_csv_file(csv_file_path)
+            
+            if not documents:
+                logger.warning("No valid documents found in CSV file")
+                return {
+                    "success": False,
+                    "indexed_count": 0,
+                    "error": "No valid documents found in CSV file",
+                    "details": "All documents failed validation or file was empty"
+                }
+            
+            # Use existing bulk indexing method - NO CHANGES to core indexing logic
+            logger.debug(f"Indexing {len(documents)} documents using existing bulk indexing")
+            indexed_count = self.bulk_index_documents(documents)
+            
+            logger.info(f"Successfully indexed {indexed_count} documents from CSV")
+            return {
+                "success": True,
+                "indexed_count": indexed_count,
+                "total_processed": len(documents),
+                "file_path": csv_file_path,
+                "message": f"Successfully indexed {indexed_count} documents from CSV file"
+            }
+            
+        except FileNotFoundError as e:
+            error_msg = f"CSV file not found: {csv_file_path}"
+            logger.error(error_msg)
+            return {
+                "success": False,
+                "indexed_count": 0,
+                "error": "File not found",
+                "details": str(e)
+            }
+        except ValueError as e:
+            error_msg = f"CSV validation error: {str(e)}"
+            logger.error(error_msg)
+            return {
+                "success": False,
+                "indexed_count": 0,
+                "error": "CSV validation failed",
+                "details": str(e)
+            }
+        except Exception as e:
+            error_msg = f"Error indexing CSV documents: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return {
+                "success": False,
+                "indexed_count": 0,
+                "error": "Indexing failed",
+                "details": str(e)
+            }

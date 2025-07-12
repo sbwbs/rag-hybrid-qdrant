@@ -1,5 +1,7 @@
 import json
 import logging
+import pandas as pd
+import uuid
 from typing import List, Dict, Any, Optional
 
 # Get logger
@@ -108,3 +110,95 @@ class DocumentProcessor:
         except Exception as e:
             logger.error(f"Unexpected error processing file: {str(e)}")
             raise 
+    
+    def process_csv_file(self, file_path: str) -> List[Dict[str, Any]]:
+        """Process CSV file and convert to document format - ADDITIVE METHOD, NO IMPACT ON EXISTING CODE"""
+        logger.info(f"Processing CSV file: {file_path}")
+        
+        try:
+            # Try to read CSV with UTF-8 encoding first, fallback to Latin1
+            try:
+                df = pd.read_csv(file_path, encoding='utf-8')
+                logger.debug("Successfully read CSV with UTF-8 encoding")
+            except UnicodeDecodeError:
+                logger.debug("UTF-8 failed, trying Latin1 encoding")
+                df = pd.read_csv(file_path, encoding='latin1')
+                logger.debug("Successfully read CSV with Latin1 encoding")
+            
+            # Validate required columns exist
+            required_cols = ['question', 'answer']
+            missing_cols = [col for col in required_cols if col not in df.columns]
+            if missing_cols:
+                error_msg = f"Missing required columns: {missing_cols}. Found columns: {list(df.columns)}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            
+            logger.info(f"CSV file has {len(df)} rows and columns: {list(df.columns)}")
+            
+            # Convert CSV rows to document format - EXACT SAME FORMAT as JSON processing
+            documents = []
+            for idx, row in df.iterrows():
+                try:
+                    # Create document in exact same format as JSON processing
+                    doc = {
+                        'question': str(row['question']).strip() if pd.notna(row['question']) else '',
+                        'answer': str(row['answer']).strip() if pd.notna(row['answer']) else '',
+                        'summary': str(row.get('summary', '')).strip() if pd.notna(row.get('summary')) else '',
+                        'answer_type': str(row.get('answer_type', 'general')).strip() if pd.notna(row.get('answer_type')) else 'general',
+                        'date': str(row.get('date', '')).strip() if pd.notna(row.get('date')) else '',
+                        'id': str(row.get('id', str(uuid.uuid4()))).strip() if pd.notna(row.get('id')) else str(uuid.uuid4())
+                    }
+                    
+                    # REUSE EXISTING validation logic - no new validation code
+                    if self.validate_document(doc):
+                        cleaned_doc = self.clean_document(doc)
+                        documents.append(cleaned_doc)
+                        logger.debug(f"Successfully processed row {idx + 1}")
+                    else:
+                        logger.warning(f"Invalid document at row {idx + 1} (CSV row {idx + 2}): validation failed")
+                        
+                except Exception as e:
+                    logger.warning(f"Error processing row {idx + 1} (CSV row {idx + 2}): {str(e)}")
+                    continue
+            
+            logger.info(f"Successfully converted {len(documents)} documents from CSV")
+            return documents
+            
+        except pd.errors.EmptyDataError:
+            error_msg = "CSV file is empty"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        except FileNotFoundError:
+            error_msg = f"CSV file not found: {file_path}"
+            logger.error(error_msg)
+            raise FileNotFoundError(error_msg)
+        except Exception as e:
+            error_msg = f"Error processing CSV file: {str(e)}"
+            logger.error(error_msg)
+            raise
+    
+    def _csv_to_documents(self, csv_data: pd.DataFrame) -> List[Dict[str, Any]]:
+        """Private helper: Convert CSV DataFrame to document format - HELPER METHOD ONLY"""
+        logger.debug("Converting CSV data to document format")
+        
+        documents = []
+        for idx, row in csv_data.iterrows():
+            try:
+                doc = {
+                    'question': str(row['question']).strip() if pd.notna(row['question']) else '',
+                    'answer': str(row['answer']).strip() if pd.notna(row['answer']) else '',
+                    'summary': str(row.get('summary', '')).strip() if pd.notna(row.get('summary')) else '',
+                    'answer_type': str(row.get('answer_type', 'general')).strip() if pd.notna(row.get('answer_type')) else 'general',
+                    'date': str(row.get('date', '')).strip() if pd.notna(row.get('date')) else '',
+                    'id': str(row.get('id', str(uuid.uuid4()))).strip() if pd.notna(row.get('id')) else str(uuid.uuid4())
+                }
+                
+                # Use existing validation
+                if self.validate_document(doc):
+                    documents.append(self.clean_document(doc))
+                    
+            except Exception as e:
+                logger.warning(f"Error converting row {idx}: {str(e)}")
+                continue
+        
+        return documents

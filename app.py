@@ -10,6 +10,7 @@ from bulk_processor import BulkProcessor
 import tempfile
 from pathlib import Path
 import pandas as pd
+import io
 
 # Initialize logging
 loggers = setup_all_loggers()
@@ -298,6 +299,184 @@ def display_settings_page():
                 app_logger.error(f"Error updating search settings: {str(e)}", exc_info=True)
                 st.error(f"Error updating settings: {str(e)}")
 
+def create_csv_template() -> str:
+    """Create a CSV template for users to download - STANDALONE UTILITY FUNCTION"""
+    template_data = {
+        'question': [
+            'What is our company data security approach?',
+            'How do we handle customer privacy?',
+            'What are our standard payment terms?'
+        ],
+        'answer': [
+            'We implement a multi-layered security approach with encryption at rest and in transit, regular security audits, and strict access controls.',
+            'We follow GDPR compliance standards, implement data minimization principles, and provide customers full control over their personal data.',
+            'Our standard payment terms are Net 30 days from invoice date, with early payment discounts available for payments within 10 days.'
+        ],
+        'summary': [
+            'Company security overview',
+            'Privacy policy summary', 
+            'Payment terms explanation'
+        ],
+        'answer_type': [
+            'security',
+            'privacy',
+            'finance'
+        ],
+        'date': [
+            '2024-01-01',
+            '2024-01-01',
+            '2024-01-01'
+        ]
+    }
+    
+    df = pd.DataFrame(template_data)
+    return df.to_csv(index=False)
+
+def display_csv_document_upload_page():
+    """NEW FUNCTION: CSV document upload interface - COMPLETELY SEPARATE FROM EXISTING UPLOAD"""
+    app_logger.info("Displaying CSV document upload page")
+    
+    st.title("📊 CSV Document Upload")
+    st.markdown("---")
+    
+    # Information section
+    with st.expander("ℹ️ CSV Format Information", expanded=False):
+        st.markdown("""
+        **Required Columns:**
+        - `question`: The question text (required)
+        - `answer`: The answer text (required)
+        
+        **Optional Columns:**
+        - `summary`: Brief summary of the Q&A pair
+        - `answer_type`: Category/type of the answer (default: 'general')
+        - `date`: Date associated with the entry
+        - `id`: Custom identifier (UUID generated if not provided)
+        
+        **Example CSV Structure:**
+        ```
+        question,answer,summary,answer_type,date
+        "What is our security approach?","We use multi-layered security...","Security overview","security","2024-01-01"
+        ```
+        """)
+    
+    # Template download section
+    st.subheader("📥 Download Template")
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        if st.button("📥 Download CSV Template", type="secondary"):
+            try:
+                template_csv = create_csv_template()
+                st.download_button(
+                    label="⬇️ Download Template File",
+                    data=template_csv,
+                    file_name="document_template.csv",
+                    mime="text/csv",
+                    help="Download a sample CSV file with the correct format"
+                )
+                app_logger.info("CSV template download initiated")
+            except Exception as e:
+                app_logger.error(f"Error creating CSV template: {str(e)}")
+                st.error(f"Error creating template: {str(e)}")
+    
+    with col2:
+        st.info("💡 Download the template to see the required CSV format and example data")
+    
+    st.markdown("---")
+    
+    # File upload section
+    st.subheader("📂 Upload CSV File")
+    uploaded_file = st.file_uploader(
+        "Choose CSV file to upload",
+        type=['csv'],
+        key="csv_document_uploader",  # Different key than existing uploaders
+        help="Upload a CSV file with question/answer pairs for indexing into the search database"
+    )
+    
+    if uploaded_file is not None:
+        try:
+            # File preview
+            st.subheader("👀 File Preview")
+            
+            # Read CSV for preview
+            file_contents = uploaded_file.getvalue()
+            df_preview = pd.read_csv(io.StringIO(file_contents.decode('utf-8')))
+            
+            # Display basic info
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Rows", len(df_preview))
+            with col2:
+                st.metric("Columns", len(df_preview.columns))
+            with col3:
+                required_cols = ['question', 'answer']
+                missing_cols = [col for col in required_cols if col not in df_preview.columns]
+                validation_status = "✅ Valid" if not missing_cols else "❌ Invalid"
+                st.metric("Format", validation_status)
+            
+            # Show preview of data
+            st.dataframe(df_preview.head(10), use_container_width=True)
+            
+            # Validation feedback
+            if missing_cols:
+                st.error(f"❌ Missing required columns: {missing_cols}")
+                st.info("Required columns: question, answer")
+            else:
+                st.success("✅ CSV format is valid!")
+                
+                # Index button
+                if st.button("🚀 Index CSV Documents", type="primary"):
+                    with st.spinner("Processing and indexing CSV documents..."):
+                        try:
+                            # Save uploaded file to temporary location
+                            with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp_file:
+                                tmp_file.write(file_contents)
+                                tmp_file_path = tmp_file.name
+                            
+                            # Use new CSV indexing method - NO IMPACT ON EXISTING WORKFLOWS
+                            app_logger.info(f"Starting CSV indexing from uploaded file")
+                            result = st.session_state.search_engine.index_documents_from_csv(tmp_file_path)
+                            
+                            # Clean up temporary file
+                            try:
+                                Path(tmp_file_path).unlink()
+                            except Exception as cleanup_error:
+                                app_logger.warning(f"Failed to delete temporary file: {cleanup_error}")
+                            
+                            # Display results
+                            if result["success"]:
+                                st.success(f"🎉 {result['message']}")
+                                
+                                # Results summary
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    st.metric("Documents Indexed", result["indexed_count"])
+                                with col2:
+                                    st.metric("Total Processed", result["total_processed"])
+                                
+                                app_logger.info(f"Successfully indexed {result['indexed_count']} documents from CSV")
+                            else:
+                                st.error(f"❌ Indexing failed: {result['error']}")
+                                if "details" in result:
+                                    st.info(f"Details: {result['details']}")
+                                app_logger.error(f"CSV indexing failed: {result['error']}")
+                                
+                        except Exception as e:
+                            app_logger.error(f"Error processing CSV upload: {str(e)}", exc_info=True)
+                            st.error(f"Error processing file: {str(e)}")
+                            
+                            # Clean up on error
+                            try:
+                                if 'tmp_file_path' in locals():
+                                    Path(tmp_file_path).unlink()
+                            except:
+                                pass
+                            
+        except Exception as e:
+            app_logger.error(f"Error reading CSV file: {str(e)}")
+            st.error(f"Error reading CSV file: {str(e)}")
+            st.info("Please ensure the file is a valid CSV format with proper encoding (UTF-8 recommended)")
+
 def main():
     app_logger.info("Starting application")
     st.set_page_config(
@@ -323,7 +502,7 @@ def main():
     st.sidebar.title("Navigation")
     page = st.sidebar.radio(
         "Go to",
-        ["Search", "Document Upload", "Bulk Processing", "Settings"]
+        ["Search", "Document Upload", "CSV Document Upload", "Bulk Processing", "Settings"]
     )
     
     # Display selected page
@@ -331,6 +510,8 @@ def main():
         display_search_page()
     elif page == "Document Upload":
         display_document_upload_page()
+    elif page == "CSV Document Upload":
+        display_csv_document_upload_page()
     elif page == "Bulk Processing":
         display_bulk_processing_page()
     else:

@@ -183,3 +183,8 @@ cython_debug/
 logs/
 *.log
 *.log.*
+
+#claude
+CLAUDE.md
+PROJECT_ESTIMATE.md
+CSV_INDEXING_PLAN.md
