@@ -18,6 +18,7 @@ class Config:
         # Search configuration
         self.collection_name = os.getenv("COLLECTION_NAME", "hybrid_rfp_rag")
         self.llm_model = os.getenv("LLM_MODEL", "gpt-4o")
+        self.search_top_k = int(os.getenv("SEARCH_TOP_K", "5"))  # Default to 5 results
         
         # Validate configuration
         self.validate()
